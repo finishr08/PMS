@@ -1,3 +1,4 @@
+
 export default function Button({
   children,
   variant = "primary",
@@ -13,7 +14,12 @@ export default function Button({
   return (
     <button
       type={type}
-      className={`${variants[variant] || variants.primary} min-h-12 px-6 ${className}`}
+      className={`
+        ${variants[variant] || variants.primary}
+        inline-flex min-h-12 items-center justify-center
+        gap-2 px-6 text-sm font-semibold
+        ${className}
+      `}
       {...props}
     >
       {children}
