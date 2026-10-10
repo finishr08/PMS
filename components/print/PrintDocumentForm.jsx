@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Printer, Info } from "lucide-react";
+import { Printer } from "lucide-react";
 
 import PageContainer from "@/components/ui/PageContainer";
 import DocumentUpload from "./DocumentUpload";
@@ -33,7 +33,13 @@ function parsePageRange(input, totalPages) {
     const start = Number(match[1]);
     const end = match[2] ? Number(match[2]) : start;
 
-    if (start < 1 || end > totalPages || start > end) {
+    if (
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start < 1 ||
+      end > totalPages ||
+      start > end
+    ) {
       throw new Error(`Choose pages between 1 and ${totalPages}.`);
     }
 
@@ -51,8 +57,13 @@ export default function PrintDocumentForm() {
   const [pageMode, setPageMode] = useState("all");
   const [pageRange, setPageRange] = useState("");
   const [paperSize, setPaperSize] = useState("A4");
-  const [showDemoNotice, setShowDemoNotice] = useState(false);
 
+  // Backend submission states
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [printError, setPrintError] = useState("");
+  const [createdJob, setCreatedJob] = useState(null);
+
+  // Validate and calculate pages
   const pageResult = useMemo(() => {
     if (!documentFile) {
       return { pages: [], error: "" };
@@ -91,18 +102,73 @@ export default function PrintDocumentForm() {
 
   const canPrint = !!documentFile && !pageResult.error && pagesPerCopy > 0;
 
+  // Clear previous submission messages
+  function resetSubmission() {
+    setPrintError("");
+    setCreatedJob(null);
+  }
+
+  // Handle selected PDF
   function handleFileChange(nextFile) {
     setDocumentFile(nextFile);
     setPageMode("all");
     setPageRange("");
-    setShowDemoNotice(false);
+    resetSubmission();
   }
 
-  function handleDemoPrint() {
-    if (!canPrint) return;
+  function handleCopiesChange(value) {
+    setCopies(value);
+    resetSubmission();
+  }
 
-    // Frontend only: no API request or printer action.
-    setShowDemoNotice(true);
+  function handlePageModeChange(value) {
+    setPageMode(value);
+    resetSubmission();
+  }
+
+  function handlePageRangeChange(value) {
+    setPageRange(value);
+    resetSubmission();
+  }
+
+  function handlePaperSizeChange(value) {
+    setPaperSize(value);
+    resetSubmission();
+  }
+
+  // Submit PDF and print settings to backend
+  async function handlePrint() {
+    if (!canPrint || isSubmitting || createdJob) return;
+
+    setIsSubmitting(true);
+    setPrintError("");
+
+    try {
+      const formData = new FormData();
+
+      formData.append("file", documentFile.file);
+      formData.append("copies", String(copies));
+      formData.append("pageMode", pageMode);
+      formData.append("pageRange", pageRange);
+      formData.append("paperSize", paperSize);
+
+      const response = await fetch("/api/print", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to create print job.");
+      }
+
+      setCreatedJob(result.job);
+    } catch (error) {
+      setPrintError(error.message || "Something went wrong.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -132,19 +198,19 @@ export default function PrintDocumentForm() {
               onFileChange={handleFileChange}
             />
 
-            <CopiesSelector copies={copies} onChange={setCopies} />
+            <CopiesSelector copies={copies} onChange={handleCopiesChange} />
 
             <PageSelector
               pageMode={pageMode}
-              setPageMode={setPageMode}
+              setPageMode={handlePageModeChange}
               pageRange={pageRange}
-              setPageRange={setPageRange}
+              setPageRange={handlePageRangeChange}
               error={pageResult.error}
             />
 
             <PaperSizeSelector
               paperSize={paperSize}
-              setPaperSize={setPaperSize}
+              setPaperSize={handlePaperSizeChange}
             />
           </div>
 
@@ -158,12 +224,31 @@ export default function PrintDocumentForm() {
 
         {/* Bottom Action Buttons */}
         <footer className="mt-8 border-t border-border pt-5">
-          {showDemoNotice && (
+          {/* Successful backend submission */}
+          {createdJob && (
             <div
               role="status"
-              className="mb-5 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
+              className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700"
             >
-              Frontend preview only. No print job has been sent.
+              <p className="font-semibold">Print job created successfully!</p>
+
+              <p className="mt-1 text-xs">Job ID: {createdJob.id}</p>
+
+              <p className="mt-1 text-xs">Status: {createdJob.status}</p>
+
+              <p className="mt-1 text-xs">
+                Document prepared. Awaiting printer integration.
+              </p>
+            </div>
+          )}
+
+          {/* Backend error */}
+          {printError && (
+            <div
+              role="alert"
+              className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
+            >
+              {printError}
             </div>
           )}
 
@@ -179,12 +264,19 @@ export default function PrintDocumentForm() {
             {/* Print */}
             <button
               type="button"
-              onClick={handleDemoPrint}
-              disabled={!canPrint}
+              onClick={handlePrint}
+              disabled={!canPrint || isSubmitting || !!createdJob}
               className="inline-flex h-11 min-w-32.5 flex-row items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#2583F5] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#1668DA] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Printer size={17} className="shrink-0" />
-              <span>Print</span>
+
+              <span>
+                {isSubmitting
+                  ? "Processing..."
+                  : createdJob
+                    ? "Queued"
+                    : "Print"}
+              </span>
             </button>
           </div>
         </footer>
