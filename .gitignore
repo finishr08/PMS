@@ -7,6 +7,8 @@
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
+/storage/temp/
+/storage/print-jobs/
 !.yarn/releases
 !.yarn/versions
 .storage
