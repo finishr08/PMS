@@ -1,3 +1,5 @@
+import KioskApp from "@/components/kiosk/KioskApp";
+
 export default function PrintingPage() {
-  return <main className="p-8">Printing Documents</main>;
+  return <KioskApp screen="printing" />;
 }
